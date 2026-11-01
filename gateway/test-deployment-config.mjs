@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+
+const compose = await readFile(new URL('../compose.yaml', import.meta.url), 'utf8')
+const nginx = await readFile(new URL('../deploy/nginx/default.conf.template', import.meta.url), 'utf8')
+const entrypoint = await readFile(new URL('../deploy/nginx/entrypoint.sh', import.meta.url), 'utf8')
+const gatewayDockerfile = await readFile(new URL('../Dockerfile.gateway', import.meta.url), 'utf8')
+const webDockerfile = await readFile(new URL('../Dockerfile.web', import.meta.url), 'utf8')
+const ignore = await readFile(new URL('../.gitignore', import.meta.url), 'utf8')
+
+assert.match(compose, /JARVIS_GATEWAY_TOKEN:\s*\$\{JARVIS_GATEWAY_TOKEN:\?/, 'compose must require a gateway secret')
+assert.match(compose, /jarvis_data:\s*\/app\/data/, 'persistent application volume must be mounted')
+assert.doesNotMatch(compose, /"8790:8790"/, 'gateway must not publish its port to the host')
+assert.match(nginx, /proxy_set_header Authorization "Bearer \$\{JARVIS_GATEWAY_TOKEN\}"/, 'reverse proxy must inject token server-side')
+assert.match(nginx, /proxy_set_header Origin ""/, 'reverse proxy must prevent cross-origin bypass issues')
+assert.match(nginx, /limit_req_zone/, 'per-client API rate limit must be configured')
+assert.match(nginx, /auth_basic_user_file \/etc\/nginx\/.htpasswd/, 'web workspace must require single-user authentication')
+assert.match(compose, /\.\/deploy\/nginx\/\.htpasswd:\/etc\/nginx\/\.htpasswd:ro/, 'hashed web password must be mounted read-only')
+assert.match(nginx, /geolocation=\(self\)/, 'browser location capability must be permission-gated rather than disabled at the proxy')
+assert.match(entrypoint, /: "\$\{JARVIS_GATEWAY_TOKEN:\?/, 'web container must fail closed without token')
+assert.match(gatewayDockerfile, /USER node/, 'gateway must not run as root')
+assert.match(webDockerfile, /npm run build/, 'web image must run production build')
+assert.match(ignore, /^\.env$/m, 'server environment file must be gitignored')
+assert.match(ignore, /^!\.env\.production\.example$/m, 'safe deployment example must remain committable')
+console.log('Deployment configuration tests passed: private gateway, server-side token injection, persistent volume, non-root runtime, per-client rate limiting and secret ignore rules.')

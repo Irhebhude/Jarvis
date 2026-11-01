@@ -1,0 +1,53 @@
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      JARVIS_GATEWAY_HOST: 0.0.0.0
+      JARVIS_GATEWAY_PORT: 8790
+      JARVIS_DATA_DIR: /app/data
+      JARVIS_TRUST_PROXY: "1"
+      JARVIS_GATEWAY_TOKEN: ${JARVIS_GATEWAY_TOKEN:?Create a strong random JARVIS_GATEWAY_TOKEN in your .env file}
+      JARVIS_AI_BASE_URL: ${JARVIS_AI_BASE_URL:-http://host.docker.internal:11434/v1}
+      JARVIS_AI_MODEL: ${JARVIS_AI_MODEL:-llama3.2}
+      JARVIS_AI_API_KEY: ${JARVIS_AI_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - jarvis_data:/app/data
+    networks: [jarvis_private]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8790/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_BACKEND: gateway
+        VITE_GATEWAY_URL: ""
+    restart: unless-stopped
+    volumes:
+      - ./deploy/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+    environment:
+      JARVIS_GATEWAY_TOKEN: ${JARVIS_GATEWAY_TOKEN:?Create a strong random JARVIS_GATEWAY_TOKEN in your .env file}
+    ports:
+      - "${JARVIS_WEB_PORT:-8080}:8080"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    networks: [jarvis_private]
+
+networks:
+  jarvis_private:
+    driver: bridge
+
+volumes:
+  jarvis_data:

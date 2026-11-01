@@ -1,0 +1,90 @@
+name: JARVIS production validation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  web-gateway-and-containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Frontend production build (TypeScript + Vite)
+        run: npm run build
+      - name: Gateway integration suite
+        run: npm run test:gateway:all
+      - name: Create temporary CI-only Basic Auth file
+        run: printf "ci:%s\n" "$(openssl passwd -apr1 ci-placeholder-password)" > deploy/nginx/.htpasswd
+      - name: Deployment preflight
+        run: npm run deploy:preflight
+        env:
+          JARVIS_GATEWAY_TOKEN: ci-only-not-a-production-secret-0123456789abcdef
+          JARVIS_AI_BASE_URL: https://api.groq.com/openai/v1
+          JARVIS_AI_MODEL: ci-placeholder-model
+      - name: Build gateway Docker image
+        run: docker build -f Dockerfile.gateway -t jarvis-gateway:ci .
+      - name: Build frontend Docker image
+        run: docker build -f Dockerfile.web -t jarvis-web:ci --build-arg VITE_BACKEND=gateway --build-arg VITE_GATEWAY_URL= .
+      - name: Verify images exist
+        run: docker image inspect jarvis-gateway:ci jarvis-web:ci >/dev/null
+
+  android-companion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build Android companion debug APK
+        working-directory: android-companion
+        run: gradle --no-daemon :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-android-companion-debug
+          path: android-companion/app/build/outputs/apk/debug/app-debug.apk
+
+  robotics-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test exoskeleton safety-state reference model
+        run: python -m unittest discover -s robotics/exoskeleton_safety/tests -p 'test_*.py'
+      - name: Compile ROS 2 bridge Python source
+        run: python -m py_compile robotics/jarvis_ros_bridge/jarvis_ros_bridge/telemetry_bridge.py
+
+  live-integrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify live Copernicus STAC catalogue
+        run: node scripts/test-orbit-live.mjs
+      - name: Verify configured external AI provider (if repository secrets exist)
+        env:
+          JARVIS_AI_BASE_URL: ${{ secrets.JARVIS_AI_BASE_URL }}
+          JARVIS_AI_MODEL: ${{ secrets.JARVIS_AI_MODEL }}
+          JARVIS_AI_API_KEY: ${{ secrets.JARVIS_AI_API_KEY }}
+        run: |
+          if [ -z "$JARVIS_AI_BASE_URL" ] || [ -z "$JARVIS_AI_MODEL" ]; then
+            echo "SKIPPED: Add JARVIS_AI_BASE_URL and JARVIS_AI_MODEL repository secrets to run a real provider test."
+          else
+            node scripts/test-live-provider.mjs
+          fi
