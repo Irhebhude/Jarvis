@@ -423,6 +423,10 @@ async function startElevenVoice(h: VoiceHandlers): Promise<Voice> {
    */
   const pendingAudio: Blob[] = []
   let draining = false
+  // A VAD segment that begins while JARVIS is busy belongs to playback/room
+  // noise, not to a new user command. Drop the whole segment even if it ends
+  // after the phase changes back to listening.
+  let discardSegment = false
 
   /**
    * Transcripts become turns here rather than one-per-segment.
@@ -448,7 +452,10 @@ async function startElevenVoice(h: VoiceHandlers): Promise<Voice> {
    */
   const transcribe = async (blob: Blob) => {
     const mode = h.mode()
-    if (mode === 'deaf') return
+    if (mode === 'deaf' || mode === 'guard') {
+      drop('ignored audio while JARVIS is busy')
+      return
+    }
     const t0 = performance.now()
     try {
       const res = await fetch(`${BRIDGE_HTTP_URL}/stt`, {
@@ -461,6 +468,12 @@ async function startElevenVoice(h: VoiceHandlers): Promise<Voice> {
         diag.restarts++
         diag.lastError = `stt ${res.status}`
         drop(`transcription failed (${res.status})`)
+        return
+      }
+      // JARVIS may have started responding while the transcription request
+      // was in flight. Never let that late result interrupt his answer.
+      if (h.mode() === 'deaf' || h.mode() === 'guard') {
+        drop('discarded late transcription while JARVIS is busy')
         return
       }
       const { text } = (await res.json()) as { text?: string }
@@ -523,23 +536,21 @@ async function startElevenVoice(h: VoiceHandlers): Promise<Voice> {
       const mode = h.mode()
       diag.mode = mode
       diag.sessions++
-      if (mode === 'deaf') return
+      discardSegment = mode === 'deaf' || mode === 'guard'
+      if (discardSegment) {
+        if (mode === 'guard') diag.selfGuarded++
+        return
+      }
       // Standing down mid-thought throws the thought away with it. Otherwise
       // held text would surface as the opening of the *next* conversation.
       if (mode === 'wake') assemble.cancel()
-      // The barge-in. In guard mode the user has started talking over him, and
-      // because the guard threshold is high this is a real interruption rather
-      // than leaked playback — so cut him off now, do not wait for the words.
-      if (mode === 'guard') {
-        const since = speakingSince()
-        if (since && Date.now() - since < SELF_GUARD_MS) {
-          diag.selfGuarded++
-          return
-        }
-        h.onSpeechStart()
-      }
     },
     onEnd: (blob) => {
+      if (discardSegment) {
+        discardSegment = false
+        drop('ignored microphone segment while JARVIS was busy')
+        return
+      }
       pendingAudio.push(blob)
       void drain()
     },
