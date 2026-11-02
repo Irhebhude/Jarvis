@@ -1,3 +1,5 @@
+import { BACKEND, BRIDGE_HTTP_URL, env } from '../config'
+
 const DEFAULT_HEALTH_CAPABILITIES = Object.freeze({ stt: false, tts: false })
 
 export type Capabilities = {
@@ -68,6 +70,6 @@ export function engineLabel(): string {
   if (c.stt && c.tts) return 'ElevenLabs'
   if (c.tts) return 'ElevenLabs voice'
   // env.elevenKey is only meaningful in direct mode; harmless to mention.
-  if (env.elevenKey && BACKEND !== 'bridge') return 'ElevenLabs (direct)'
+  if (env.elevenKey && BACKEND === 'direct') return 'ElevenLabs (direct)'
   return 'browser speech'
 }
