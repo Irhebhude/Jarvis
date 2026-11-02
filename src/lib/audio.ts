@@ -8,6 +8,15 @@ let stream: MediaStream | null = null
 let ctx: AudioContext | null = null
 let analyser: AnalyserNode | null = null
 let buf: Uint8Array | null = null
+let micMuted = false
+
+/** Disable microphone capture while JARVIS is speaking; keep the stream alive. */
+export function setMicMuted(muted: boolean): void {
+  micMuted = muted
+  if (stream) {
+    for (const track of stream.getAudioTracks()) track.enabled = !muted
+  }
+}
 
 export async function getMic(): Promise<MediaStream> {
   if (stream) return stream
@@ -18,6 +27,7 @@ export async function getMic(): Promise<MediaStream> {
       autoGainControl: true,
     },
   })
+  for (const track of stream.getAudioTracks()) track.enabled = !micMuted
   return stream
 }
 

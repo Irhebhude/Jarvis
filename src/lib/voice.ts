@@ -767,7 +767,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       diag.running = false
       touch()
       rec = null
-      if (!stopped) setTimeout(spin, 80)
+      if (!stopped && h.mode() !== 'guard' && h.mode() !== 'deaf') setTimeout(spin, 80)
     }
     try {
       rec.start()
@@ -777,12 +777,32 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     }
   }
 
-  spin()
+  // SpeechRecognition owns its own microphone capture. Abort it completely
+  // during JARVIS playback; filtering transcripts is too late because the
+  // recognizer still hears the speaker and can trigger interruption callbacks.
+  const playbackGate = setInterval(() => {
+    if (stopped) return
+    const mode = h.mode()
+    if (mode === 'guard' || mode === 'deaf') {
+      reset()
+      assemble.cancel()
+      if (running) {
+        try { rec?.abort() } catch { /* already stopped */ }
+        running = false
+        diag.running = false
+        rec = null
+      }
+      return
+    }
+    if (!running && !rec) spin()
+  }, 50)
+
+  if (h.mode() !== 'guard' && h.mode() !== 'deaf') spin()
 
   // The heartbeat. If nothing has been heard from the engine for a while it has
   // gone quiet on us — tear it down and build a fresh one.
   const health = setInterval(() => {
-    if (stopped) return
+    if (stopped || h.mode() === 'guard' || h.mode() === 'deaf') return
     const idle = Date.now() - lastAlive
     diag.idleMs = idle
     if (idle < 15000) return
@@ -803,6 +823,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     stop: () => {
       stopped = true
       clearInterval(health)
+      clearInterval(playbackGate)
       clearSilence()
       assemble.cancel()
       diag.running = false

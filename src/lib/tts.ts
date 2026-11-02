@@ -8,6 +8,7 @@ import {
 } from '../config'
 import * as kokoro from './kokoro'
 import { caps } from './capabilities'
+import { setMicMuted } from './audio'
 
 /**
  * Speech output.
@@ -112,6 +113,7 @@ export function speakingSince(): number {
 }
 
 function setSpeaking(text: string) {
+  setMicMuted(Boolean(text))
   if (text) {
     speaking = text
     speakingAt = Date.now()
