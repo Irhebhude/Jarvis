@@ -206,6 +206,21 @@ export async function startVad(h: VadHandlers): Promise<Vad> {
 
     const energy = rms()
     smoothEnergy += (energy - smoothEnergy) * 0.5
+
+    // Hard playback lock: do not open or continue a recording while the
+    // assistant is thinking, using tools, or speaking. A raised threshold
+    // alone is not reliable on phone speakers; residual echo can still cross
+    // it and trigger a false barge-in. The mic stream stays open, and capture
+    // resumes as soon as setGuard(false) is called.
+    if (guard) {
+      h.onLevel(0)
+      armedAt = 0
+      speaking = false
+      speechStartedAt = 0
+      discardRecorder()
+      return
+    }
+
     h.onLevel(Math.min(1, smoothEnergy * 12))
 
     // Adapt the floor only when we are confident this is not speech.
@@ -265,7 +280,14 @@ export async function startVad(h: VadHandlers): Promise<Vad> {
       }
     },
     setGuard: (on) => {
+      if (guard === on) return
       guard = on
+      if (on) {
+        armedAt = 0
+        speaking = false
+        speechStartedAt = 0
+        discardRecorder()
+      }
     },
     live: () => !stopped,
     meter: () => ({ energy: smoothEnergy, floor, threshold, speaking }),

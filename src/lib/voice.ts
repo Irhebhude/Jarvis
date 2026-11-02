@@ -9,8 +9,9 @@ import { caps } from './capabilities'
  *
  * One recogniser, running for the life of the page. It is never torn down for
  * a turn, and that single fact is most of what separates this from a kiosk:
- * the microphone is still open while JARVIS is talking, so you can cut him off
- * the way you would cut off a person.
+ * the microphone pipeline remains available across turns, but recognition
+ * results are gated while JARVIS is speaking so mobile speaker echo cannot
+ * interrupt his own output.
  *
  * The obvious design — one recogniser hunting for the wake word, a second one
  * capturing the command, stopping the first to start the second because the
@@ -572,7 +573,7 @@ async function startElevenVoice(h: VoiceHandlers): Promise<Voice> {
     // over, and letting the hold expire later would open the next one with a
     // fragment of the last.
     if ((mode === 'wake' || mode === 'deaf') && assemble.held()) assemble.cancel()
-  }, 200)
+  }, 50)
 
   return {
     stop: () => {
@@ -689,6 +690,17 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     diag.mode = mode
     if (mode === 'deaf') {
       interim = ''
+      return
+    }
+    // Do not let browser recognition turn JARVIS's own playback into a
+    // barge-in. Discard results while he is thinking, using tools, or speaking.
+    // Listening resumes automatically when the app returns to command/wake.
+    if (mode === 'guard') {
+      clearSilence()
+      settled = ''
+      interim = ''
+      started = false
+      barged = false
       return
     }
     let fresh = ''
