@@ -614,7 +614,6 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   let settled = ''
   let interim = ''
   let started = false
-  let barged = false
   let lastWake = 0
   let lastAlive = Date.now()
   let silenceTimer: ReturnType<typeof setTimeout> | null = null
@@ -644,7 +643,6 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     settled = ''
     interim = ''
     started = false
-    barged = false
   }
 
   const emit = () => {
@@ -700,8 +698,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       settled = ''
       interim = ''
       started = false
-      barged = false
-      return
+        return
     }
     let fresh = ''
     interim = ''
