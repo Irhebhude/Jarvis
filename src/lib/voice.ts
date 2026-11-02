@@ -1,6 +1,6 @@
 import { BRIDGE_HTTP_URL } from '../config'
 import { getMic } from './audio'
-import { speakingNow, speakingSince } from './tts'
+import { speakingNow } from './tts'
 import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
 
@@ -128,20 +128,6 @@ const CONTINUES =
 
 /** Trailing punctuation a transcriber emits mid-thought. */
 const TRAILS = /[,;:–—-]$/
-
-/**
- * A barge-in this soon after he starts a sentence is him, not you.
- *
- * Echo cancellation and the raised guard threshold stop most of his playback
- * reaching the detector, but the attack of the very first syllable is the
- * loudest, least-cancelled thing in the whole answer — it arrives before the
- * canceller has adapted to it. Without this, a long answer could interrupt
- * itself on its own first word, which reads as JARVIS refusing to speak.
- *
- * Kept short deliberately. This is the one window where a genuine interruption
- * is also least likely: the user has not yet heard enough to want to stop him.
- */
-const SELF_GUARD_MS = 350
 
 /**
  * A quiet gap this long with a finished-looking sentence ends the turn.
