@@ -1,5 +1,5 @@
 import { BRIDGE_HTTP_URL } from '../config'
-import { getMic } from './audio'
+import { getMic, isMicMuted } from './audio'
 import { speakingNow } from './tts'
 import { startVad, type Vad } from './vad'
 import { caps } from './capabilities'
@@ -742,7 +742,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   }
 
   const spin = () => {
-    if (stopped || running) return
+    if (stopped || running || isMicMuted()) return
     rec = new Ctor()
     rec.continuous = true
     rec.interimResults = true
@@ -767,7 +767,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       diag.running = false
       touch()
       rec = null
-      if (!stopped && h.mode() !== 'guard' && h.mode() !== 'deaf') setTimeout(spin, 80)
+      if (!stopped && !isMicMuted() && h.mode() !== 'guard' && h.mode() !== 'deaf') setTimeout(spin, 80)
     }
     try {
       rec.start()
@@ -783,7 +783,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
   const playbackGate = setInterval(() => {
     if (stopped) return
     const mode = h.mode()
-    if (mode === 'guard' || mode === 'deaf') {
+    if (isMicMuted() || mode === 'guard' || mode === 'deaf') {
       reset()
       assemble.cancel()
       if (running) {
@@ -794,15 +794,15 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       }
       return
     }
-    if (!running && !rec) spin()
+    if (!running && !rec && !isMicMuted()) spin()
   }, 50)
 
-  if (h.mode() !== 'guard' && h.mode() !== 'deaf') spin()
+  if (!isMicMuted() && h.mode() !== 'guard' && h.mode() !== 'deaf') spin()
 
   // The heartbeat. If nothing has been heard from the engine for a while it has
   // gone quiet on us — tear it down and build a fresh one.
   const health = setInterval(() => {
-    if (stopped || h.mode() === 'guard' || h.mode() === 'deaf') return
+    if (stopped || isMicMuted() || h.mode() === 'guard' || h.mode() === 'deaf') return
     const idle = Date.now() - lastAlive
     diag.idleMs = idle
     if (idle < 15000) return

@@ -18,6 +18,11 @@ export function setMicMuted(muted: boolean): void {
   }
 }
 
+/** True while speech output owns the audio turn. */
+export function isMicMuted(): boolean {
+  return micMuted
+}
+
 export async function getMic(): Promise<MediaStream> {
   if (stream) return stream
   stream = await navigator.mediaDevices.getUserMedia({

@@ -113,7 +113,6 @@ export function speakingSince(): number {
 }
 
 function setSpeaking(text: string) {
-  setMicMuted(Boolean(text))
   if (text) {
     speaking = text
     speakingAt = Date.now()
@@ -385,6 +384,9 @@ export function createSpeaker(): Speaker {
   async function pump(): Promise<void> {
     if (pumping) return
     pumping = true
+    // Own the microphone for the WHOLE response queue. Do not unmute between
+    // sentence-level TTS items: Chrome can restart recognition in those gaps.
+    setMicMuted(true)
     try {
       for (;;) {
         if (cancelled) break
@@ -401,6 +403,7 @@ export function createSpeaker(): Speaker {
       }
     } finally {
       pumping = false
+      setMicMuted(false)
       if (cancelled || !queue.length) settleDrained()
     }
   }
