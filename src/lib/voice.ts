@@ -733,30 +733,10 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
 
     settled += fresh
     const full = `${settled} ${interim}`.replace(/\s+/g, ' ').trim()
-    if (!started || (mode === 'guard' && !barged)) {
-      const words = full.split(/\s+/).filter(Boolean).length
-      if (mode === 'guard') {
-        // An override word cuts through everything below it — "stop" has to
-        // work on the first syllable or it is not a stop button.
-        if (!OVERRIDE.test(full)) {
-          // His own first syllable, same as the premium path. This engine has
-          // no energy gate, so without the clock the only defence is the word
-          // count below, and a single clear word is exactly what leaks first.
-          const since = speakingSince()
-          if (since && Date.now() - since < SELF_GUARD_MS) {
-            diag.selfGuarded++
-            return
-          }
-          // Two words before this engine believes an interruption. The energy
-          // path can be instant because it triggers on loudness the canceller
-          // has already had a pass at; here the evidence is a transcript of
-          // audio that includes his own playback, and one word of that is not
-          // evidence of anything.
-          if (words < 2) return
-        }
-      }
+    // Guard-mode results were discarded above, so only command mode can
+    // reach this point. Keep this branch limited to the active command path.
+    if (!started) {
       started = true
-      if (mode === 'guard') barged = true
       h.onSpeechStart()
     }
     diag.dropped = ''
